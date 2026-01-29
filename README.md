@@ -65,6 +65,18 @@ No virtualenv, no pip install.
 
 ---
 
+## Release build (Ubuntu ELF)
+
+This repo includes a GitHub Actions workflow that builds a single-file ELF for Ubuntu
+using PyInstaller. To create a release artifact:
+
+1. Push a tag that starts with `v` (e.g., `v0.1.0`).
+2. GitHub Actions will build `f2b_tui-linux-x86_64.tar.gz` and attach it to the release.
+
+The workflow can also be triggered manually via **Actions → build-release**.
+
+---
+
 ## Usage
 
 ```bash
