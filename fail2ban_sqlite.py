@@ -86,12 +86,13 @@ def fetch_top_bips(path: str, limit: int = 200) -> List[sqlite3.Row]:
         con.close()
 
 
-def fetch_ip_history_bips(path: str, ip: str, limit: int = 20) -> List[sqlite3.Row]:
+def fetch_ip_history_bips(path: str, ip: str, limit: Optional[int] = None) -> List[sqlite3.Row]:
     """
     Returns per-ban history rows: jail,timeofban,bantime,bancount(if available or 1)
     """
     con = _connect_ro(path)
     try:
+        limit_clause = " LIMIT ?" if limit is not None else ""
         if _table_exists(con, "bips"):
             cols = _columns(con, "bips")
             if {"ip", "jail", "timeofban"}.issubset(cols):
@@ -101,18 +102,20 @@ def fetch_ip_history_bips(path: str, ip: str, limit: int = 20) -> List[sqlite3.R
                         FROM bips
                         WHERE ip=?
                         ORDER BY timeofban DESC
-                        LIMIT ?
                     """
-                    return list(con.execute(q, (ip, limit)).fetchall())
+                    q = q.rstrip() + limit_clause
+                    params = (ip,) if limit is None else (ip, limit)
+                    return list(con.execute(q, params).fetchall())
                 else:
                     q = """
                         SELECT jail, timeofban, bantime, 1 AS bancount
                         FROM bips
                         WHERE ip=?
                         ORDER BY timeofban DESC
-                        LIMIT ?
                     """
-                    return list(con.execute(q, (ip, limit)).fetchall())
+                    q = q.rstrip() + limit_clause
+                    params = (ip,) if limit is None else (ip, limit)
+                    return list(con.execute(q, params).fetchall())
         if _table_exists(con, "bans"):
             cols = _columns(con, "bans")
             if {"ip", "jail", "timeofban"}.issubset(cols):
@@ -121,9 +124,10 @@ def fetch_ip_history_bips(path: str, ip: str, limit: int = 20) -> List[sqlite3.R
                     FROM bans
                     WHERE ip=?
                     ORDER BY timeofban DESC
-                    LIMIT ?
                 """
-                return list(con.execute(q, (ip, limit)).fetchall())
+                q = q.rstrip() + limit_clause
+                params = (ip,) if limit is None else (ip, limit)
+                return list(con.execute(q, params).fetchall())
         return []
     finally:
         con.close()

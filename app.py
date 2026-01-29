@@ -11,11 +11,11 @@ import subprocess
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from asn import cymru_bulk_lookup_nc
 from cache_db import CacheDB
-from fail2ban_sqlite import fetch_ip_history_bips, fetch_top_bips, import_bips_aggregates, source_fingerprint
+from fail2ban_sqlite import fetch_ip_history_bips, import_bips_aggregates, source_fingerprint
 from model import ASNInfo, Event
 from parsers import parse_f2b_line, parse_ssh_line
 from tailer import TailFile
@@ -62,6 +62,7 @@ class App:
         self._poll_known: Set[str] = set()
 
         self._last_asn_ts: float = 0.0
+        self._asn_cursor: Optional[str] = None
 
         if cfg.import_on_start:
             self.import_fail2ban_history()
@@ -245,7 +246,7 @@ class App:
             self._handle_event(src="poll", kind="UNBAN", ip=ip, jail=self.cfg.jail)
         self._poll_known = banned
 
-    def refresh_asn(self, visible_ips: Sequence[str]) -> Tuple[int, int]:
+    def refresh_asn(self) -> Tuple[int, int]:
         if not self.cfg.asn_enable:
             return (0, 0)
         now = time.time()
@@ -253,27 +254,22 @@ class App:
             return (0, 0)
         self._last_asn_ts = now
 
-        # filter: only ips that need refresh per ttl and present in cache
-        need: List[str] = []
         ttl = int(self.cfg.asn_cache_ttl)
         cur_ts = now_ts()
+        min_fetched_ts = cur_ts - ttl
         try:
-            for ip in visible_ips:
-                row = self.cache.get_ip_row(ip)
-                if not row:
-                    continue
-                fetched = row["provider_fetched_ts"]
-                if fetched is None or (cur_ts - int(fetched)) >= ttl:
-                    need.append(ip)
+            need = self.cache.list_ips_needing_asn_refresh(self._asn_cursor, int(self.cfg.asn_batch), min_fetched_ts)
+            if not need and self._asn_cursor is not None:
+                self._asn_cursor = None
+                need = self.cache.list_ips_needing_asn_refresh(self._asn_cursor, int(self.cfg.asn_batch), min_fetched_ts)
         except Exception as e:
-            self.log_sys("ERR", "", f"asn cache check failed: {e}")
+            self.log_sys("ERR", "", f"asn cache scan failed: {e}")
             return (0, 0)
 
-        # include top-N by bans as fallback if visible empty
         if not need:
             return (0, 0)
 
-        need = need[: int(self.cfg.asn_batch)]
+        self._asn_cursor = need[-1]
         try:
             res = cymru_bulk_lookup_nc(need, host=self.cfg.cymru_host, timeout_s=self.cfg.asn_timeout)
         except Exception as e:
@@ -291,9 +287,9 @@ class App:
             self.log_sys("ERR", "", f"asn sqlite write failed: {e}")
             return (len(need), 0)
 
-    def periodic(self, visible_ips: Sequence[str]) -> None:
+    def periodic(self) -> None:
         self.poll_fail2ban_bans()
-        asked, written = self.refresh_asn(visible_ips)
+        asked, written = self.refresh_asn()
         if asked > 0 and written > 0:
             self.log_sys("INFO", "", f"asn refresh: asked={asked} got={written}")
         self._maybe_commit()
@@ -316,7 +312,7 @@ class App:
         items.sort(key=lambda t: (t[1].get("BAN", 0), t[1].get("FAIL", 0), sum(t[1].values())), reverse=True)
         return items
 
-    def get_sqlite_rows(self, search: str, limit: int = 1000) -> List[object]:
+    def get_sqlite_rows(self, search: str, limit: Optional[int] = None) -> List[object]:
         try:
             return self.cache.list_ip_cache(search=search, limit=limit)
         except Exception as e:
@@ -394,9 +390,9 @@ class App:
         lines.append("")
 
         # last K bips entries
-        lines.append("Last bans from fail2ban sqlite (up to 20):")
+        lines.append("Fail2ban history:")
         try:
-            hist = fetch_ip_history_bips(self.cfg.f2b_sqlite, ip, limit=20)
+            hist = fetch_ip_history_bips(self.cfg.f2b_sqlite, ip, limit=None)
             if not hist:
                 lines.append("  (no rows)")
             else:
@@ -505,35 +501,3 @@ class App:
                 j = f" jail={ev.jail}" if ev.jail else ""
                 out.append(f"{fmt_epoch_utc(ev.ts)} {ev.src} {ev.kind} {ev.ip}{j}")
         return out
-
-    def get_visible_ips_for_tab(self, tab: str, search: str, max_ips: int = 120) -> List[str]:
-        ips: List[str] = []
-        if tab == "realtime":
-            rows = self.get_realtime_rows(search)
-            ips = [ip for ip, _ in rows[:max_ips]]
-        elif tab == "sqlite":
-            rows = self.get_sqlite_rows(search, limit=max_ips)
-            ips = [str(r["ip"]) for r in rows[:max_ips]]
-        elif tab == "subnets":
-            # take top ips within top subnets (light)
-            subs = self.get_subnet_rows(search)
-            for sr in subs[:10]:
-                subnet = str(sr["subnet"])
-                for ir in self.cache.list_ips_in_subnet(subnet, limit=10):
-                    ips.append(str(ir["ip"]))
-                    if len(ips) >= max_ips:
-                        break
-                if len(ips) >= max_ips:
-                    break
-        elif tab == "asn":
-            # take top ips from first few ASNs
-            asns = self.get_asn_rows(search)
-            for ar in asns[:10]:
-                a = str(ar["asn"])
-                for ir in self.cache.list_ips_in_asn(a, limit=10):
-                    ips.append(str(ir["ip"]))
-                    if len(ips) >= max_ips:
-                        break
-                if len(ips) >= max_ips:
-                    break
-        return ips

@@ -269,22 +269,40 @@ class CacheDB:
         ).fetchall()
         return [str(r["ip"]) for r in rows]
 
-    def list_ip_cache(self, search: str, limit: int = 1000) -> List[sqlite3.Row]:
+    def list_ip_cache(self, search: str, limit: Optional[int] = None) -> List[sqlite3.Row]:
         s = f"%{search.lower()}%"
+        limit_clause = " LIMIT ?" if limit is not None else ""
         if search:
             q = """
                 SELECT * FROM ip_cache
                 WHERE lower(ip) LIKE ? OR lower(provider_name) LIKE ? OR lower(provider_asn) LIKE ?
                 ORDER BY ban_count_total DESC, bans DESC, fails DESC, last_seen_ts DESC
-                LIMIT ?
             """
-            return list(self.con.execute(q, (s, s, s, int(limit))).fetchall())
+            q = q.rstrip() + limit_clause
+            params = (s, s, s) if limit is None else (s, s, s, int(limit))
+            return list(self.con.execute(q, params).fetchall())
         q = """
             SELECT * FROM ip_cache
             ORDER BY ban_count_total DESC, bans DESC, fails DESC, last_seen_ts DESC
-            LIMIT ?
         """
-        return list(self.con.execute(q, (int(limit),)).fetchall())
+        q = q.rstrip() + limit_clause
+        params = () if limit is None else (int(limit),)
+        return list(self.con.execute(q, params).fetchall())
+
+    def list_ips_needing_asn_refresh(self, after_ip: Optional[str], limit: int, min_fetched_ts: int) -> List[str]:
+        base = """
+            SELECT ip
+            FROM ip_cache
+            WHERE (provider_fetched_ts IS NULL OR provider_fetched_ts < ?)
+        """
+        if after_ip:
+            q = base + " AND ip > ? ORDER BY ip LIMIT ?"
+            params = (int(min_fetched_ts), str(after_ip), int(limit))
+        else:
+            q = base + " ORDER BY ip LIMIT ?"
+            params = (int(min_fetched_ts), int(limit))
+        rows = self.con.execute(q, params).fetchall()
+        return [str(r["ip"]) for r in rows]
 
     def list_top_subnets(self, top_n: int, search: str) -> List[sqlite3.Row]:
         s = f"%{search.lower()}%"
