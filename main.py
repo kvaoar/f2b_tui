@@ -13,8 +13,11 @@ from tui import run_tui
 
 
 def default_cache_path() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(here, "f2b_cache.sqlite3")
+    if getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "f2b_cache.sqlite3")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
