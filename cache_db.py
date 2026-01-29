@@ -269,7 +269,7 @@ class CacheDB:
         ).fetchall()
         return [str(r["ip"]) for r in rows]
 
-    def list_ip_cache(self, search: str, limit: int = 500) -> List[sqlite3.Row]:
+    def list_ip_cache(self, search: str, limit: int = 1000) -> List[sqlite3.Row]:
         s = f"%{search.lower()}%"
         if search:
             q = """
