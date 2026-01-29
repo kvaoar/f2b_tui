@@ -92,6 +92,49 @@ def prompt_search(stdscr, h: int, w: int, current: str) -> str:
                 buf += c
 
 
+def _read_key(stdscr) -> int:
+    ch = stdscr.getch()
+    if ch != 27:
+        return ch
+    nxt = stdscr.getch()
+    if nxt == -1:
+        return ch
+    if nxt != 91:  # '['
+        return ch
+    third = stdscr.getch()
+    if third == -1:
+        return ch
+    if third == 65:
+        return curses.KEY_UP
+    if third == 66:
+        return curses.KEY_DOWN
+    if third == 67:
+        return curses.KEY_RIGHT
+    if third == 68:
+        return curses.KEY_LEFT
+    if third == 72:
+        return curses.KEY_HOME
+    if third == 70:
+        return curses.KEY_END
+    if third in (49, 52, 53, 54):
+        fourth = stdscr.getch()
+        if fourth == 126:
+            if third == 49:
+                return curses.KEY_HOME
+            if third == 52:
+                return curses.KEY_END
+            if third == 53:
+                return curses.KEY_PPAGE
+            if third == 54:
+                return curses.KEY_NPAGE
+    return ch
+
+
+def _details_page_size(h: int) -> int:
+    inner_h = max(1, (max(5, h - 4) - 2))
+    return max(1, inner_h)
+
+
 def draw_list_panel(stdscr, y0: int, h: int, w: int, title: str, rows: List[str], ls: ListState) -> None:
     safe_addnstr(stdscr, y0, 0, " " * (w - 1), w - 1, curses.A_BOLD)
     safe_addnstr(stdscr, y0, 0, f" {title}", w - 1, curses.A_BOLD)
@@ -230,7 +273,7 @@ def run_tui(stdscr, app) -> None:
             last_render = now
 
         # input
-        ch = stdscr.getch()
+        ch = _read_key(stdscr)
         if ch == -1:
             time.sleep(0.01)
             continue
@@ -244,9 +287,9 @@ def run_tui(stdscr, app) -> None:
             elif ch == curses.KEY_DOWN:
                 ds.cursor += 1
             elif ch == curses.KEY_PPAGE:
-                ds.cursor -= max(1, (h // 2))
+                ds.cursor -= _details_page_size(h)
             elif ch == curses.KEY_NPAGE:
-                ds.cursor += max(1, (h // 2))
+                ds.cursor += _details_page_size(h)
             elif ch == curses.KEY_HOME:
                 ds.cursor = 0
             elif ch == curses.KEY_END:
