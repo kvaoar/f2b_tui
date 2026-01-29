@@ -232,7 +232,7 @@ def run_tui(stdscr, app) -> None:
             for ip, st in rows_data:
                 rows.append(f"{ip:15}  FAIL={st.get('FAIL',0):5} OK={st.get('OK',0):5} BAN={st.get('BAN',0):5} UNBAN={st.get('UNBAN',0):5}")
         elif active == "sqlite":
-            rows_data = app.get_sqlite_rows(ls.search, limit=1000)
+            rows_data = app.get_sqlite_rows(ls.search, limit=None)
             rows = []
             for r in rows_data:
                 rows.append(
@@ -253,9 +253,8 @@ def run_tui(stdscr, app) -> None:
         events_lines = app.get_events_lines(max_lines=300)
 
         # periodic tasks (asn/poll/commit)
-        visible_ips = app.get_visible_ips_for_tab(active, ls.search, max_ips=120)
         app.process_log_tails()
-        app.periodic(visible_ips)
+        app.periodic()
 
         # render
         now = time.time()
