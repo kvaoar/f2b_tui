@@ -1,0 +1,49 @@
+name: build-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ubuntu:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build ELF
+        run: |
+          pyinstaller --onefile --name f2b_tui main.py
+
+      - name: Package artifact
+        run: |
+          mkdir -p dist/release
+          cp dist/f2b_tui dist/release/f2b_tui
+          cp README.md dist/release/README.md
+          cd dist/release
+          tar -czf ../../f2b_tui-linux-x86_64.tar.gz .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: f2b_tui-linux-x86_64
+          path: f2b_tui-linux-x86_64.tar.gz
+
+      - name: Attach release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: f2b_tui-linux-x86_64.tar.gz
