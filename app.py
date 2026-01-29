@@ -316,7 +316,7 @@ class App:
         items.sort(key=lambda t: (t[1].get("BAN", 0), t[1].get("FAIL", 0), sum(t[1].values())), reverse=True)
         return items
 
-    def get_sqlite_rows(self, search: str, limit: int = 500) -> List[object]:
+    def get_sqlite_rows(self, search: str, limit: int = 1000) -> List[object]:
         try:
             return self.cache.list_ip_cache(search=search, limit=limit)
         except Exception as e:

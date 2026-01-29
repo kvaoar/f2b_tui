@@ -232,7 +232,7 @@ def run_tui(stdscr, app) -> None:
             for ip, st in rows_data:
                 rows.append(f"{ip:15}  FAIL={st.get('FAIL',0):5} OK={st.get('OK',0):5} BAN={st.get('BAN',0):5} UNBAN={st.get('UNBAN',0):5}")
         elif active == "sqlite":
-            rows_data = app.get_sqlite_rows(ls.search, limit=500)
+            rows_data = app.get_sqlite_rows(ls.search, limit=1000)
             rows = []
             for r in rows_data:
                 rows.append(
